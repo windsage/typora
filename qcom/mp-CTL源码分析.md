@@ -585,40 +585,43 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant App as 应用层
-    participant Target as Target
-    participant Store as PerfDataStore
-    participant Config as 配置数据
-    
-    Note over App: 性能提升请求
-    App->>Target: getBoostConfig(hintId=0x1081, type=1)
-    Target->>Store: GetBoostConfig(0x1081, 1, mapArray, timeout)
-    
-    Note over Store: 查找配置映射
-    Store->>Config: mBoostConfigs.find(0x1081)
-    Config-->>Store: 找到HintID配置组
-    Store->>Config: [0x1081].find(type=1)
-    Config-->>Store: 找到Type配置列表
-    
-    Note over Store: 遍历匹配条件
-    loop 配置列表中的每项
-        Store->>Store: 检查分辨率匹配
-        Store->>Store: 检查FPS匹配
-        Store->>Store: 检查分化配置匹配
-        
-        alt 所有条件匹配
-            Store->>Store: 复制mConfigTable到mapArray
-            Store->>Store: 设置timeout值
-            Store-->>Target: 返回配置数组大小
-        else 条件不匹配
-            Store->>Store: 继续下一项
-        end
+participant App as 应用层
+participant Target as Target
+participant Store as PerfDataStore
+participant Config as 配置数据
+
+Note over App: 性能提升请求
+App->>Target: getBoostConfig(hintId=0x1081, type=1)
+Target->>Store: GetBoostConfig(0x1081, 1, mapArray, timeout)
+
+Note over Store: 查找配置映射
+Store->>Config: mBoostConfigs.find(0x1081)
+Config-->>Store: 找到HintID配置组
+Store->>Config: [0x1081].find(type=1)
+Config-->>Store: 找到Type配置列表
+
+Note over Store: 遍历匹配条件
+loop 遍历配置列表
+    Store->>Store: 检查分辨率匹配
+    Store->>Store: 检查FPS匹配
+    Store->>Store: 检查分化配置匹配
+
+    alt 匹配成功
+        Store->>Store: 复制mConfigTable到mapArray
+        Store->>Store: 设置timeout值
+        Note over Store: 匹配成功，逻辑上跳出循环（break）
+        Store-->>Target: 返回配置数组大小
+        %% 注释说明：此处逻辑已跳出循环，不再处理其他配置
+    else 不匹配
+        Note over Store: 条件不符，继续下一项
     end
-    
-    Target-->>App: 返回解析后的资源配置
-    
-    Note over App: 应用配置到系统
-    App->>App: 根据返回的配置数组设置系统参数
+end
+
+Target-->>App: 返回解析后的资源配置
+
+Note over App: 应用配置到系统
+App->>App: 根据返回的配置数组设置系统参数
+
 ```
 
 ### 8.6 配置数据结构构建流程
