@@ -829,9 +829,9 @@ graph TB
 2. **加密检测与解密**：自动识别加密文件并解密
 3. **透明集成**：对现有XML解析逻辑透明
 
-## 10.3 详细实现方案
+### 10.3 详细实现方案
 
-### 10.3.1 新增配置文件管理类
+#### 10.3.1 新增配置文件管理类
 
 **插入位置：** `BoostConfigReader.h` 和 `BoostConfigReader.cpp`
 
@@ -863,7 +863,7 @@ public:
 };
 ```
 
-### 10.3.2 修改现有宏定义
+#### 10.3.2 修改现有宏定义
 
 **修改位置：** `BoostConfigReader.cpp` 文件开头
 
@@ -879,7 +879,7 @@ public:
 #define TARGETRESOURCE_CONFIGS_XML ConfigFileManager::getConfigFilePath("targetresourceconfigs.xml").c_str()
 ```
 
-### 10.3.3 核心实现代码
+#### 10.3.3 核心实现代码
 
 **插入位置：** `BoostConfigReader.cpp`
 
@@ -962,7 +962,7 @@ bool ConfigFileManager::readAndDecryptConfig(const std::string& filepath,
 }
 ```
 
-### 10.3.4 修改XML解析器集成
+#### 10.3.4 修改XML解析器集成
 
 **修改位置：** `XmlParser.h` 和 `XmlParser.cpp`
 
@@ -996,7 +996,7 @@ bool AppsListXmlParser::ParseFromMemory(const std::string& xmlContent) {
 }
 ```
 
-### 10.3.5 修改PerfDataStore解析流程
+#### 10.3.5 修改PerfDataStore解析流程
 
 **修改位置：** `BoostConfigReader.cpp` 中的 `XmlParserInit()` 和 `TargetResourcesInit()` 方法
 
@@ -1040,7 +1040,7 @@ void PerfDataStore::TargetResourcesInit() {
 }
 ```
 
-## 10.4 实现时序图
+### 10.4 实现时序图
 
 ```mermaid
 sequenceDiagram
@@ -1079,9 +1079,9 @@ sequenceDiagram
     Parser-->>Store: 解析完成
 ```
 
-根据你的需求，添加新的VENDOR_HINT需要在以下几个地方进行实现：
+## 11. 自定义事件
 
-## 1. 定义新的Hint ID
+### 11.1 定义新的Hint ID
 
 **位置：** `VendorIPerf.h`
 
@@ -1089,7 +1089,7 @@ sequenceDiagram
 VENDOR_HINT_DOWN_CONTROL = 0x00001093,
 ```
 
-## 2. 添加XML配置文件条目
+### 11.2 添加XML配置文件条目
 
 **位置：** `perfboostsconfig.xml` 配置文件
 
@@ -1099,7 +1099,7 @@ VENDOR_HINT_DOWN_CONTROL = 0x00001093,
 </Config>
 ```
 
-## 3. 注册Hint扩展处理器（如需特殊处理）
+### 11.3 注册Hint扩展处理器（如需特殊处理）
 
 **位置：** `TargetInit.cpp` 中的 `Target::InitializeTarget()`
 
@@ -1115,11 +1115,11 @@ void Target::InitializeTarget() {
 }
 ```
 
-## 4. 实现Hint处理逻辑（如需特殊处理）
+### 11.4 实现Hint处理逻辑（如需特殊处理）
 
 **位置：** `HintExtHandler.h` 和 `HintExtHandler.cpp`
 
-### 4.1 头文件声明
+#### 11.4.1 头文件声明
 
 ```cpp
 // HintExtHandler.h
@@ -1131,7 +1131,7 @@ public:
 };
 ```
 
-### 4.2 实现文件
+#### 11.4.2 实现文件
 
 ```cpp
 // HintExtHandler.cpp
@@ -1229,9 +1229,3 @@ graph TB
     G --> H[返回结果]
 ```
 
-**最简实现：** 如果你的hint只需要标准的资源配置处理，只需要：
-
-1. 在 `VendorIPerf.h` 中定义ID
-2. 在 `perfboostsconfig.xml` 中添加配置
-
-系统会自动处理标准的OpCode配置，无需额外代码。
