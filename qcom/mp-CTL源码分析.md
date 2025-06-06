@@ -1079,7 +1079,7 @@ sequenceDiagram
     Parser-->>Store: 解析完成
 ```
 
-## 11. 自定义事件
+## 11. 自定义Hint ID事件
 
 ### 11.1 定义新的Hint ID
 
@@ -1088,6 +1088,14 @@ sequenceDiagram
 ```cpp
 VENDOR_HINT_DOWN_CONTROL = 0x00001093,
 ```
+
+**位置：**`frameworks/base\core/java/android/util/BoostFramework.java`
+
+```java
+public static final int VENDOR_HINT_DOWN_CONTROL = 0x00001093;
+```
+
+
 
 ### 11.2 添加XML配置文件条目
 
@@ -1179,7 +1187,17 @@ int32_t DownControlAction::DownControlHintExcluder(mpctl_msg_t *pMsg) {
 }
 ```
 
-## 5. 添加资源处理逻辑（如需新的OpCode）
+## 12. 自定义新OpCode
+
+### 12.1 定义OpCode
+
+要根据**Perflock opcode value解析**当前文档去了解如何构造自己的opcode，需要符合qcom的规范，也可以自行阅读80-NR256-2_REV_E_MPCTL_Feature.pdf Chapter3.3 & Chapter 3.4
+
+构造出来的opcode需要在`vendor/qcom/proprietary/perf-core/configs/common/commonresourceconfigs.xml `中定义
+
+
+
+### 12.2 注册OpCode
 
 **位置：** `OptsHandler.cpp` 中的 `InitializeOptsTable()`
 
