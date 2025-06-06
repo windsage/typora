@@ -2,13 +2,15 @@
 
 ## 1. PerfHAL 组件部署结构
 
+当前模块代码路径为`vendor/qcom/proprietary/perf-core/perf-hal`
+
 ### 1.1 Binary 文件
 
 ```bash
 # AIDL HAL服务
 /vendor/bin/hw/vendor.qti.hardware.perf2-service
 
-# Socket HAL服务（低端设备）
+# Socket HAL服务
 /vendor/bin/hw/vendor.qti.hardware.perf-hal-service
 
 # 客户端库
@@ -58,9 +60,154 @@ service vendor.qti.hardware.perf-hal-service /vendor/bin/hw/vendor.qti.hardware.
     socket perfservice stream 0666 system system
 ```
 
-## 2. 调用链路分析
+#### AIDL vs Socket服务区别
 
-### 2.1 客户端调用入口
+##### AIDL服务 (`service.cpp` + `Perf.cpp`)
+
+- **用途**：标准Android HAL服务，面向应用框架层
+- **客户端**：通过Binder IPC调用，主要是系统服务和应用
+- **特点**：完整的HAL接口，支持所有perfHint、perfLock等API
+- **场景**：正常Android系统中的性能优化请求
+
+##### Socket服务 (`service_sock.cpp` + `Perf_sock.cpp`)
+
+- **用途**：轻量级本地通信，面向native客户端
+
+- **客户端**：通过Unix Domain Socket连接的native进程
+
+- **特点**：精简的消息协议，减少开销
+
+- **场景**：嵌入式或资源受限环境、系统启动早期阶段
+
+  
+
+## 2.系统架构图 
+
+```mermaid
+graph TB
+    subgraph "Application Layer 应用层"
+        APP[Applications 应用程序]
+        BF[BoostFramework]
+        PS[PerfService]
+    end
+    
+    subgraph "JNI/Client Layer JNI/客户端层"
+        JNI[JNI Layer]
+        CLIENT[mp-ctl-client]
+    end
+
+    subgraph "PerfHAL Module"
+        subgraph "Service Interface 服务接口层"
+            PERF["Perf.cpp/h<br/>AIDL接口实现"]
+            PERF_SOCK["Perf_sock.cpp/h<br/>Socket接口实现"]
+            PERF_STUB["Perf_Stub.cpp<br/>存根实现"]
+            SERVICE["service.cpp<br/>AIDL服务启动"]
+            SERVICE_SOCK["service_sock.cpp<br/>Socket服务启动"]
+        end
+
+        subgraph "Configuration Management 配置管理层"
+            TC["TargetConfig.cpp/h<br/>目标平台配置管理<br/>• CPU集群信息<br/>• 核心数配置<br/>• 频率设置<br/>• SoC ID映射"]
+            DC["DivergentConfig.cpp/h<br/>动态硬件配置检测<br/>• 运行时读取集群信息<br/>• 显示/GPU子系统检测<br/>• 物理集群ID映射"]
+            PC["PerfConfig.cpp/h<br/>性能配置存储<br/>• XML配置解析<br/>• 属性值存储<br/>• 目标特定配置"]
+        end
+
+        subgraph "Core Processing 核心处理层"
+            GL["PerfGlueLayer.cpp/h<br/>胶水层管理器<br/>• 模块注册管理<br/>• 请求分发<br/>• 线程池处理<br/>• 生命周期管理"]
+            
+            subgraph "Performance Modules 性能模块"
+                MPCTL["libqti-perfd.so<br/>主要性能控制模块"]
+                LM["liblearningmodule.so<br/>学习模块"]
+                MEMPERF["libmemperfd.so<br/>内存性能模块"]
+                OTHER[其他性能模块...]
+            end
+        end
+
+        subgraph "Utility Layer 工具层"
+            VIG["VendorIGlue.cpp/h<br/>厂商接口胶水层"]
+        end
+    end
+
+    subgraph "System Resources 系统资源"
+        subgraph "SysFS Nodes 系统文件节点"
+            CPUFREQ["/sys/devices/system/cpu/cpufreq/<br/>CPU频率控制"]
+            CAPACITY["/sys/devices/system/cpu/cpu*/cpu_capacity<br/>CPU容量信息"]
+            CLUSTER["/sys/devices/system/cpu/cpu*/topology/cluster_id<br/>集群ID信息"]
+            SUBSYS["/sys/devices/soc0/<br/>子系统可用性检查"]
+        end
+
+        subgraph "Configuration Files 配置文件"
+            TARGET_XML["targetconfig.xml<br/>目标配置文件"]
+            PERF_XML["perfconfigstore.xml<br/>性能配置存储"]
+        end
+
+        subgraph "System Properties 系统属性"
+            PROPS["ro.product.name<br/>ro.board.first_api_level<br/>vendor.debug.trace.perf<br/>vendor.disable.perf.hal"]
+        end
+    end
+
+    %% 连接关系
+    APP --> BF
+    BF --> PS
+    PS --> JNI
+    JNI --> CLIENT
+
+    CLIENT --> PERF
+    CLIENT --> PERF_SOCK
+
+    SERVICE --> PERF
+    SERVICE_SOCK --> PERF_SOCK
+
+    PERF --> GL
+    PERF_SOCK --> GL
+
+    GL --> MPCTL
+    GL --> LM
+    GL --> MEMPERF
+    GL --> OTHER
+
+    PERF --> TC
+    PERF --> DC
+    PERF --> PC
+
+    TC --> TARGET_XML
+    PC --> PERF_XML
+    DC --> CPUFREQ
+    DC --> CAPACITY
+    DC --> CLUSTER
+    DC --> SUBSYS
+
+    TC --> PROPS
+
+    VIG --> GL
+
+    %% API流程标注
+    PERF -.->|"perfLockAcquire<br/>perfHint<br/>perfEvent<br/>perfGetProp"| GL
+    GL -.->|"SubmitRequest<br/>SyncRequest"| MPCTL
+    GL -.->|异步处理| LM
+    GL -.->|条件加载| MEMPERF
+
+    %% 样式
+    classDef appLayer fill:#e1f5fe
+    classDef serviceLayer fill:#f3e5f5
+    classDef configLayer fill:#e8f5e8
+    classDef coreLayer fill:#fff3e0
+    classDef moduleLayer fill:#fce4ec
+    classDef sysLayer fill:#f0f4c3
+
+    class APP,BF,PS appLayer
+    class PERF,PERF_SOCK,PERF_STUB,SERVICE,SERVICE_SOCK serviceLayer
+    class TC,DC,PC configLayer
+    class GL coreLayer
+    class MPCTL,LM,MEMPERF,OTHER moduleLayer
+    class CPUFREQ,CAPACITY,CLUSTER,SUBSYS,TARGET_XML,PERF_XML,PROPS sysLayer
+
+```
+
+
+
+## 3. 调用链路分析
+
+### 3.1 客户端调用入口
 
 #### mp-ctl-client 调用链
 
@@ -129,7 +276,7 @@ static jint com_qualcomm_qti_performance_native_perf_lock_acq(JNIEnv *env, jobje
 }
 ```
 
-### 2.2 HAL服务接收处理
+### 3.2 HAL服务接收处理
 
 #### AIDL接口实现 (Perf.cpp)
 
@@ -242,7 +389,7 @@ ScopedAStatus Perf::perfHint(int32_t hint, const std::string& userDataStr,
 }
 ```
 
-### 2.3 PerfGlueLayer 请求分发
+### 3.3 PerfGlueLayer 请求分发
 
 #### 请求类型判断与分发
 
@@ -359,7 +506,7 @@ int32_t PerfGlueLayer::PerfGlueLayerSubmitRequest(mpctl_msg_t *msg) {
 }
 ```
 
-### 2.4 性能模块动态加载
+### 3.4 性能模块动态加载
 
 #### 模块加载机制
 
@@ -474,7 +621,7 @@ int32_t PerfModule::LoadPerfLib(const char *libname) {
 }
 ```
 
-### 2.5 HAL初始化流程
+### 3.5 HAL初始化流程
 
 #### 服务初始化
 
@@ -569,9 +716,9 @@ void TargetConfig::InitializeTargetConfig() {
 }
 ```
 
-## 3. 参数解析与处理机制
+## 4. 参数解析与处理机制
 
-### 3.1 Boost参数格式
+### 4.1 Boost参数格式
 
 #### 标准格式
 
@@ -595,15 +742,9 @@ if (size > MAX_ARGS_PER_REQUEST) {
     QLOGE(LOG_TAG, "Maximum number of arguments allowed exceeded");
     return ndk::ScopedAStatus::ok();
 }
-
-// 参数必须成对出现
-if (size % 2 != 0) {
-    QLOGE(LOG_TAG, "Invalid boost parameters: must be resource-value pairs");
-    return ndk::ScopedAStatus::ok();
-}
 ```
 
-### 3.2 Hint参数处理
+### 4.2 Hint参数处理
 
 #### Hint ID映射
 
@@ -645,7 +786,7 @@ bool PerfModule::IsThisEventRegistered(int32_t event) {
 }
 ```
 
-### 3.3 配置参数解析
+### 4.3 配置参数解析
 
 #### XML配置解析
 
@@ -709,9 +850,9 @@ void TargetConfig::TargetConfigsCB(xmlNodePtr node, void *index) {
 
 
 
-## 4. Socket服务实现（低端设备）
+## 5. Socket服务实现
 
-### 4.1 Socket服务架构
+### 5.1 Socket服务架构
 
 ```cpp
 // Perf_sock.cpp - Socket服务实现
@@ -766,7 +907,7 @@ public:
 };
 ```
 
-### 4.2 客户端连接处理
+### 5.2 客户端连接处理
 
 ```cpp
 // service_sock.cpp - 主服务循环
@@ -852,7 +993,7 @@ int32_t Perf::sendMsg(void *msg, int32_t type) {
 }
 ```
 
-### 4.3 API调用分发处理
+### 5.3 API调用分发处理
 
 ```cpp
 void Perf::callAPI(mpctl_msg_t &msg) {
@@ -913,7 +1054,7 @@ void Perf::callAPI(mpctl_msg_t &msg) {
 }
 ```
 
-### 4.4 Socket版本API实现
+### 5.4 Socket版本API实现
 
 ```cpp
 // 性能锁获取
@@ -1002,108 +1143,499 @@ void Perf::perfSyncRequest(mpctl_msg_t &pMsg) {
 }
 ```
 
-## 5. 配置文件解析与应用
 
-### 5.1 Boost配置解析 (perfboostsconfig.xml)
+
+## 6. 配置文件解析
+
+### 6.1 targetconfig.xml解析
+
+#### 6.1.1 TargetConfig解析回调函数
 
 ```cpp
-// 配置文件结构示例
-<?xml version="1.0" encoding="utf-8"?>
-<BoostConfigs>
-    <PerfBoost>
-        <!-- 应用启动优化 -->
-        <Config
-            Id="0x00001081" Type="1" Enable="true" Timeout="2000" Target="pineapple"
-            Resources="0x40C00000, 0x3, 0x40804000, 0xFFF, 0x40804100, 0xFFF, 
-                       0x40800000, 0xFFF, 0x40800100, 0xFFF, 0x41848000, 0x104410" />
+void TargetConfig::TargetConfigsCB(xmlNodePtr node, void *index) {
+    char *idPtr = NULL;
+    char *tmp_target = NULL;
+    int8_t id = 0, core_per_cluster = 0, target_index = 0;
+    long int frequency = INT_MAX;
+    long int capped_max_freq = INT_MAX;
+    bool cluster_type_present = false;
+
+    TargetConfig &tc = TargetConfig::getTargetConfig();
+    
+    // 获取配置索引 (Config1, Config2等)
+    target_index = *((int8_t*)index) - 1;
+    if((target_index < 0) || (target_index >= MAX_CONFIGS_SUPPORTED_PER_PLATFORM)) {
+        QLOGE(LOG_TAG, "Invalid config index value while parsing the XML file.");
+        return;
+    }
+
+    // 创建或获取配置对象
+    if ((int8_t)tc.mTargetConfigs.size() <= target_index) {
+        auto tmp = new(std::nothrow) TargetConfigInfo;
+        if (tmp != NULL)
+            tc.mTargetConfigs.push_back(tmp);
+    }
+    TargetConfigInfo *config = tc.mTargetConfigs[target_index];
+
+    // 解析TargetInfo标签
+    if (!xmlStrcmp(node->name, BAD_CAST TARGET_CONFIGS_XML_ELEM_TARGETINFO_TAG)) {
+        // 解析Target属性
+        if (xmlHasProp(node, BAD_CAST TARGET_CONFIGS_XML_ELEM_TARGET_TAG)) {
+            tmp_target = (char *)xmlGetProp(node, BAD_CAST TARGET_CONFIGS_XML_ELEM_TARGET_TAG);
+            if(tmp_target != NULL) {
+                config->mTargetName = string(tmp_target);
+                xmlFree(tmp_target);
+            }
+        }
+
+        // 解析数值属性 - 使用辅助函数确保类型安全
+        config->mNumCluster = ConvertNodeValueToInt(node, TARGET_CONFIGS_XML_ELEM_NUMCLUSTERS_TAG, config->mNumCluster);
+        config->mTotalNumCores = ConvertNodeValueToInt(node, TARGET_CONFIGS_XML_ELEM_TOTALNUMCORES_TAG, config->mTotalNumCores);
+        config->mCoreCtlCpu = ConvertNodeValueToInt(node, TARGET_CONFIGS_XML_ELEM_CORECTLCPU_TAG, config->mCoreCtlCpu);
         
-        <!-- 滚动优化 -->
-        <Config
-            Id="0x00001080" Type="1" Enable="true" Target="pineapple" Fps="60"
-            Resources="0x4303C000, 0xA6428, 0x4080C000, 1000000, 0x40C00000, 0x2" />
-    </PerfBoost>
-</BoostConfigs>
-```
+        // 解析SocIds数组
+        if (xmlHasProp(node, BAD_CAST TARGET_CONFIGS_XML_ELEM_SOCIDS_TAG)) {
+            idPtr = (char *)xmlGetProp(node, BAD_CAST TARGET_CONFIGS_XML_ELEM_SOCIDS_TAG);
+            if (NULL != idPtr) {
+                config->mNumSocids = ConvertToIntArray(idPtr, config->mSupportedSocids, MAX_SUPPORTED_SOCIDS);
+                xmlFree(idPtr);
+            }
+        }
 
-### 5.2 目标配置应用 (TargetConfig.cpp)
-
-```cpp
-// 配置应用逻辑
-void TargetConfig::TargetConfigInit() {
-    QLOGV(LOG_TAG, "TargetConfigInit start");
-    TargetConfigInfo *config = getTargetConfigInfo(getSocID());
-    
-    if (NULL == config) {
-        QLOGE(LOG_TAG, "Initialization of TargetConfigInfo Object failed");
-        return;
-    }
-    
-    if (!config->mUpdateTargetInfo) {
-        QLOGE(LOG_TAG, "Target initialized with default values due to XML error");
-        return;
-    }
-    
-    // 1. 验证配置一致性
-    if (config->mCalculatedCores != config->mTotalNumCores) {
-        QLOGE(LOG_TAG, "Mismatch between TotalNumCores and CalculatedCores");
-        return;
-    }
-    
-    // 2. 检查是否为默认多样化配置
-    isDefaultDivergent = CheckDefaultDivergent(config);
-    
-    // 3. 应用基本配置
-    mTargetName = string(config->mTargetName);
-    mNumCluster = config->mNumCluster;
-    mTotalNumCores = config->mTotalNumCores;
-    mClusterNameToIdMap = config->mClusterNameToIdMap;
-    
-    // 4. 验证和应用TargetMaxArgsPerReq
-    if (config->mTargetMaxArgsPerReq != 0) {
-        mTargetMaxArgsPerReq = config->mTargetMaxArgsPerReq;
-        if (mTargetMaxArgsPerReq % 2 != 0 || 
-            mTargetMaxArgsPerReq > MAX_ARGS_PER_REQUEST_LIMIT) {
-            mTargetMaxArgsPerReq = MAX_ARGS_PER_REQUEST;
-            QLOGE(LOG_TAG, "TargetMaxArgsPerReq initialized with wrong value");
+        // 配置验证逻辑
+        if ((config->mNumCluster <= 0) || (config->mNumCluster > MAX_CLUSTER)) {
+            config->mUpdateTargetInfo = false;
+            QLOGE(LOG_TAG, "Number of clusters are not mentioned correctly in targetconfig xml file");
         }
     }
-    
-    // 5. 初始化集群配置
-    if (mNumCluster > 0) {
-        mCorePerCluster = new(std::nothrow) int8_t[mNumCluster];
-    }
-    
-    if (mCorePerCluster) {
-        for (uint8_t i = 0; i < mNumCluster; i++) {
-            mCorePerCluster[i] = determineCoresPerCluster(config, i);
-            mCpuMaxFreqResetVal[i] = config->mCpumaxfrequency[i];
-            mCpuCappedMaxfreqVal[i] = config->mCpuCappedMaxfreq[i];
-            
-            // 更新集群映射
-            updateClusterNameToIdMap(i);
+
+    // 解析ClustersInfo标签
+    if (!xmlStrcmp(node->name, BAD_CAST TARGET_CONFIGS_XML_ELEM_CLUSTER_TAG)) {
+        id = ConvertNodeValueToInt(node, TARGET_CONFIGS_XML_ELEM_ID_TAG, id);
+        core_per_cluster = ConvertNodeValueToInt(node, TARGET_CONFIGS_XML_ELEM_NUMCORES_TAG, core_per_cluster);
+
+        // 解析集群类型 (little/big/prime)
+        if (xmlHasProp(node, BAD_CAST TARGET_CONFIGS_XML_ELEM_TYPE_TAG)) {
+            idPtr = (char *)xmlGetProp(node, BAD_CAST TARGET_CONFIGS_XML_ELEM_TYPE_TAG);
+            if (NULL != idPtr) {
+                cluster_type_present = true;
+                config->mClusterNameToIdMap[idPtr] = id;
+                
+                // 根据集群类型设置mType
+                if (id == 0) {
+                    if (strncmp("little", idPtr, strlen(idPtr)) == 0) {
+                        config->mType = 1;  // little cluster在索引0
+                    } else {
+                        config->mType = 0;  // big cluster在索引0
+                    }
+                }
+                xmlFree(idPtr);
+            }
         }
+
+        // 存储集群配置
+        config->mCorepercluster[id] = core_per_cluster;
+        config->mCpumaxfrequency[id] = frequency;
+        config->mCalculatedCores += core_per_cluster;
     }
-    
-    // 6. 应用其他配置
-    mSyncCore = config->mSyncCore;
-    mType = config->mType;
-    mType2 = config->mType2;
-    mCoreCtlCpu = config->mCoreCtlCpu;
-    mMinCoreOnline = config->mMinCoreOnline;
-    mGovInstanceType = determineGovernorInstType(config);
-    mCpufreqGov = config->mCpufreqGov;
-    mMinFpsTuning = config->mMinFpsTuning;
-    
-    // 7. 设置多样化配置
-    mDivergentNumber = divergentConf.getDivergentNumber();
-    mDisplayEnabled = divergentConf.checkDisplayEnabled();
-    mGpuEnabled = divergentConf.checkGpuEnabled();
-    
-    QLOGV(LOG_TAG, "TargetConfigInit end");
 }
 ```
 
-## 6. 完整调用时序图
+#### 6.1.2 辅助函数 - 类型安全转换
+
+```cpp
+long int TargetConfig::ConvertNodeValueToInt(xmlNodePtr node, const char *tag, long int defaultvalue) {
+    char *idPtr = NULL;
+    
+    if (xmlHasProp(node, BAD_CAST tag)) {
+        idPtr = (char *)xmlGetProp(node, BAD_CAST tag);
+        if (NULL != idPtr) {
+            defaultvalue = strtol(idPtr, NULL, 0);  // 支持十进制和十六进制
+            xmlFree(idPtr);
+        }
+    }
+    return defaultvalue;
+}
+
+uint32_t TargetConfig::ConvertToIntArray(char *str, int16_t intArray[], uint32_t size) {
+    uint32_t i = 0;
+    char *pch = NULL;
+    char *end = NULL;
+    char *endPtr = NULL;
+
+    if ((NULL == str) || (NULL == intArray)) {
+        return i;
+    }
+
+    end = str + strlen(str);
+    
+    // 解析逗号分隔的SocId列表 "636,640,641,657,658"
+    do {
+        pch = strchr(str, ',');
+        intArray[i] = strtol(str, &endPtr, 0);
+        i++;
+        str = pch;
+        if (NULL != pch) {
+            str++;
+        }
+    } while ((NULL != str) && (str < end) && (i < size));
+
+    return i;
+}
+```
+
+### 6.2 perfconfigstore.xml解析核心代码
+
+#### 6.2.1 PerfConfig解析回调函数
+
+```cpp
+void PerfConfigDataStore::PerfConfigStoreCB(xmlNodePtr node, void *) {
+    char *mName = NULL, *mValue = NULL, *mTarget = NULL, *mKernel = NULL,
+         *mResolution = NULL, *mRam = NULL, *mVariant = NULL, *mSkewType = NULL;
+    
+    PerfConfigDataStore &store = PerfConfigDataStore::getPerfDataStore();
+    TargetConfig &tc = TargetConfig::getTargetConfig();
+    
+    // 获取当前系统信息用于匹配
+    const char *target_name = tc.getTargetName().c_str();
+    const char *kernelVersion = tc.getFullKernelVersion().c_str();
+    const char *target_name_variant = tc.getVariant().c_str();
+    uint32_t tc_resolution = tc.getResolution();
+    uint32_t tc_ram = tc.getRamSize();
+    
+    // 匹配标志
+    bool valid_target = true, valid_kernel = true, valid_ram = true,
+         valid_resolution = true, valid_target_variant = true;
+
+    if(!xmlStrcmp(node->name, BAD_CAST PERF_CONFIG_STORE_PROP)) {
+        // 解析基本属性
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_NAME)) {
+            mName = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_NAME);
+        }
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_VALUE)) {
+            mValue = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_VALUE);
+        }
+
+        // 目标匹配逻辑 - 支持多目标 "Target1,Target2"
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_TARGET)) {
+            mTarget = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_TARGET);
+            if (mTarget != NULL) {
+                valid_target = false;
+                char *pos = NULL;
+                char *tname_token = strtok_r(mTarget, ",", &pos);
+                while(tname_token != NULL) {
+                    if((strlen(tname_token) == strlen(target_name)) && 
+                       (!strncmp(target_name, tname_token, strlen(target_name)))) {
+                        valid_target = true;
+                        break;
+                    }
+                    tname_token = strtok_r(NULL, ",", &pos);
+                }
+            }
+        }
+
+        // 变体匹配 (32bit/64bit/go版本)
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_TARGET_VARIANT)) {
+            mVariant = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_TARGET_VARIANT);
+            if (mVariant != NULL) {
+                if(((strlen(mVariant) == strlen(target_name_variant)) && 
+                   (!strncmp(target_name_variant, mVariant, strlen(mVariant))))) {
+                    valid_target_variant = true;
+                } else {
+                    valid_target_variant = false;
+                }
+            }
+        }
+
+        // 内核版本匹配
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_KERNEL)) {
+            mKernel = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_KERNEL);
+            if (mKernel != NULL) {
+                if((strlen(mKernel) == strlen(kernelVersion)) && 
+                   !strncmp(kernelVersion, mKernel, strlen(mKernel))) {
+                    valid_kernel = true;
+                } else {
+                    valid_kernel = false;
+                }
+            }
+        }
+
+        // 分辨率匹配
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_RESOLUTION)) {
+            mResolution = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_RESOLUTION);
+            if (mResolution != NULL) {
+                uint32_t res = store.ConvertToEnumResolutionType(mResolution);
+                if (res == tc_resolution) {
+                    valid_resolution = true;
+                } else {
+                    valid_resolution = false;
+                }
+            }
+        }
+
+        // RAM大小匹配
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_RAM)) {
+            mRam = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_RAM);
+            if (mRam != NULL) {
+                uint32_t ram = atoi(mRam);
+                if (ram == tc_ram) {
+                    valid_ram = true;
+                } else {
+                    valid_ram = false;
+                }
+            }
+        }
+
+        // SkewType处理 - 硬件功能检查
+        if(xmlHasProp(node, BAD_CAST PERF_CONFIG_STORE_SKEW_TYPE)) {
+            mSkewType = (char *) xmlGetProp(node, BAD_CAST PERF_CONFIG_STORE_SKEW_TYPE);
+            if (mSkewType != NULL) {
+                bool skewRetVal = false;
+                int32_t skewType = atoi(mSkewType);
+                if(mFeature_knob_func) {
+                    skewRetVal = mFeature_knob_func(skewType);  // 调用libskewknob.so
+                }
+
+                if (!skewRetVal) {
+                    // 功能不支持，强制设置为false
+                    if (mValue) {
+                        xmlFree(mValue);
+                        mValue = (char *) xmlMalloc(sizeof(FALSE_STR) * sizeof(char));
+                        if (mValue) {
+                            memset(mValue, 0, sizeof(FALSE_STR));
+                            strlcpy(mValue, FALSE_STR, sizeof(FALSE_STR));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 存储匹配的配置
+        if (mName != NULL && mValue != NULL) {
+            if ((valid_kernel && valid_target && valid_target_variant && 
+                 valid_resolution && valid_ram)) {
+                UpdatePerfConfig(mName, mValue);
+            } else if (!mTarget && !mVariant && !mKernel && !mResolution && !mRam) {
+                // 通用配置，无条件匹配
+                try {
+                    store.mPerfConfigStore.insert_or_assign(mName, mValue);
+                } catch (std::exception &e) {
+                    QLOGE(LOG_TAG, "Exception caught: %s in %s", e.what(), __func__);
+                }
+            }
+        }
+
+        // 清理内存
+        if(mName) xmlFree(mName);
+        if(mValue) xmlFree(mValue);
+        if(mTarget) xmlFree(mTarget);
+        // ... 其他指针清理
+    }
+}
+```
+
+#### 6.2.2 分辨率类型转换
+
+```cpp
+ValueMapResType PerfConfigDataStore::ConvertToEnumResolutionType(char *res) {
+    ValueMapResType ret = MAP_RES_TYPE_ANY;
+
+    if (NULL == res) {
+        return ret;
+    }
+
+    switch(res[0]) {
+    case '1':
+        if (!strncmp(res, MAP_RES_TYPE_VAL_1080p, strlen(MAP_RES_TYPE_VAL_1080p))) {
+            ret = MAP_RES_TYPE_1080P;
+        }
+        break;
+    case '7':
+        if (!strncmp(res, MAP_RES_TYPE_VAL_720p, strlen(MAP_RES_TYPE_VAL_720p))) {
+            ret = MAP_RES_TYPE_720P;
+        }
+        break;
+    case 'H':  // HD+ Resolution (720x1440)
+        if (!strncmp(res, MAP_RES_TYPE_VAL_HD_PLUS, strlen(MAP_RES_TYPE_VAL_HD_PLUS))) {
+            ret = MAP_RES_TYPE_HD_PLUS;
+        }
+        break;
+    case '2':
+        if (!strncmp(res, MAP_RES_TYPE_VAL_2560, strlen(MAP_RES_TYPE_VAL_2560))) {
+            ret = MAP_RES_TYPE_2560;
+        }
+    }
+    return ret;
+}
+```
+
+
+
+### 6.3 XML示例解析结果
+
+#### 6.3.1 targetconfig.xml解析结果:
+
+- **Target**: "volcano"
+- **NumClusters**: 3 (little/big/prime)
+- **TotalNumCores**: 8
+- **SocIds**: [636,640,641,657,658]
+- **集群配置**:
+  - Cluster 0: 4个little核心
+  - Cluster 1: 3个big核心
+  - Cluster 2: 1个prime核心
+
+#### 6.3.2 perfconfigstore.xml解析结果:
+
+- **通用配置**: vendor.debug.enable.lm = "true"
+- **目标特定**: ro.vendor.perf.ss = "true" (仅volcano目标)
+- **条件配置**: ro.vendor.qti.sys.fw.bservice_age = "5000" (RAM≤4GB时)
+
+
+
+### 6.4 解析时序图
+
+```mermaid
+sequenceDiagram
+    participant MAIN as main()
+    participant PERF as Perf构造函数
+    participant TC as TargetConfig
+    participant DC as DivergentConfig
+    participant PC as PerfConfigDataStore
+    participant XML as XmlParser
+    participant SYS as 系统文件/属性
+Note over MAIN,SYS: PerfHAL服务启动阶段
+
+MAIN->>PERF: 创建Perf实例
+PERF->>PERF: 检查vendor.disable.perf.hal属性
+
+alt 性能HAL已启用
+    PERF->>PERF: Init()
+    
+    Note over PERF,SYS: TargetConfig初始化
+    PERF->>TC: InitializeTargetConfig()
+    
+    TC->>SYS: readSocID()
+    SYS-->>TC: 返回SoC ID
+    
+    TC->>SYS: readRamSize()
+    SYS-->>TC: 读取/proc/meminfo
+    SYS-->>TC: 返回RAM大小分类
+    
+    TC->>SYS: readVariant()
+    SYS-->>TC: 读取ro.product.name属性
+    
+    TC->>SYS: readResolution()
+    SYS-->>TC: 读取显示分辨率节点
+    
+    TC->>SYS: readKernelVersion()
+    SYS-->>TC: 读取/proc/sys/kernel/osrelease
+    
+    TC->>SYS: 读取ro.board.first_api_level
+    SYS-->>TC: 返回API Level
+    
+    Note over TC,XML: XML配置解析
+    TC->>TC: InitTargetConfigXML()
+    
+    loop 遍历最多5个配置
+        TC->>XML: 注册Config1-5解析器
+        XML->>SYS: 解析targetconfig.xml
+        
+        Note over XML: 解析TargetInfo标签
+        XML->>XML: 解析Target、SocIds、NumClusters等
+        
+        Note over XML: 解析ClustersInfo标签
+        loop 每个集群配置
+            XML->>XML: 解析Id、NumCores、Type、MaxFrequency等
+        end
+        
+        XML->>TC: TargetConfigsCB回调
+        TC->>TC: 验证配置有效性
+        TC->>TC: 存储到mTargetConfigs向量
+    end
+    
+    TC->>TC: TargetConfigInit()
+    TC->>TC: getTargetConfigInfo(socId)
+    TC->>TC: 根据SoC ID选择匹配配置
+    
+    Note over TC,DC: DivergentConfig初始化
+    TC->>DC: DivergentConfig构造函数
+    
+    DC->>SYS: readNumClusters()
+    SYS-->>DC: 扫描/sys/devices/system/cpu/cpufreq/目录
+    SYS-->>DC: 返回policy目录数量
+    
+    DC->>SYS: readPerClusterInfo()
+    loop 每个集群
+        SYS-->>DC: 读取related_cpus文件
+        DC->>DC: 解析核心数和范围
+    end
+    
+    DC->>SYS: readCapacityPerCluster()
+    loop 每个集群
+        SYS-->>DC: 读取cpu_capacity文件
+        DC->>DC: 存储容量信息
+    end
+    
+    DC->>SYS: readPhysicalCluster()
+    loop 每个集群
+        SYS-->>DC: 读取cluster_id文件
+        DC->>DC: 映射物理集群ID
+    end
+    
+    DC->>DC: determineGovernorInstType()
+    DC->>DC: GenerateDivergentNumber()
+    
+    DC->>SYS: isSubSystemEnabled("display")
+    SYS-->>DC: 检查显示子系统状态
+    
+    DC->>SYS: isSubSystemEnabled("gpu")
+    SYS-->>DC: 检查GPU子系统状态
+    
+    DC->>DC: DumpAll() - 输出调试信息
+    
+    Note over TC: 完成TargetConfig配置
+    TC->>TC: 使用DivergentConfig数据更新配置
+    TC->>TC: CheckDefaultDivergent()
+    TC->>TC: 设置集群信息、核心数等
+    TC->>TC: updateClusterNameToIdMap()
+    TC->>TC: setInitCompleted(true)
+    
+    Note over PERF,PC: PerfConfigDataStore初始化
+    PERF->>PC: ConfigStoreInit()
+    
+    PC->>PC: 加载libskewknob.so(可选)
+    
+    PC->>XML: 注册perfconfigstore.xml解析器
+    XML->>SYS: 解析perfconfigstore.xml
+    
+    loop 每个Prop标签
+        XML->>XML: 解析Name、Value、Target等属性
+        XML->>TC: 获取当前目标信息进行匹配
+        
+        alt 目标匹配成功
+            XML->>PC: PerfConfigStoreCB回调
+            PC->>PC: 存储配置到mPerfConfigStore
+        else 目标不匹配
+            XML->>XML: 跳过该配置项
+        end
+    end
+    
+    PC->>PC: 设置mPerfConfigInit = true
+    
+    Note over PERF: 配置初始化完成
+    PERF->>PERF: 加载性能模块库
+    PERF->>PERF: 启用系统跟踪(可选)
+    
+else 性能HAL已禁用
+    PERF->>PERF: 跳过初始化
+end
+
+Note over MAIN,SYS: 配置管理层初始化完成
+```
+
+
+
+## 7. 完整调用时序图
 
 ```mermaid
 sequenceDiagram
@@ -1163,4 +1695,343 @@ sequenceDiagram
     PS-->>BF: 返回handle
     BF-->>App: 返回handle
 ```
+
+
+
+## 8. PerfHAL加密云控方案
+
+### 8.1 整体方案设计
+
+#### 8.1.1 架构设计
+
+```mermaid
+graph TB
+    A[配置文件加载请求] --> B[路径优先级检查]
+    B --> C{/data/perf/存在?}
+    C -->|是| D[读取/data/perf/文件]
+    C -->|否| E[读取/vendor/etc/perf/文件]
+    D --> F[检测文件是否加密]
+    E --> F
+    F --> G{文件已加密?}
+    G -->|是| H[解密文件内容]
+    G -->|否| I[直接使用原文件]
+    H --> J[XML解析]
+    I --> J
+    J --> K[配置数据存储]
+```
+
+#### 8.1.2 核心实现策略
+
+- **文件路径管理器**：统一管理配置文件路径选择
+- **加密检测与解密**：自动识别加密文件并解密
+- **透明集成**：对现有XML解析逻辑透明
+
+## 8.2 详细实现方案
+
+#### 8.2.1 新增配置文件管理类
+
+**插入位置**：PerfConfig.h 和 PerfConfig.cpp
+
+```cpp
+// PerfConfig.h 新增
+class ConfigFileManager {
+private:
+    static const char* DEBUG_CONFIG_DIR;     // "/data/perf/"
+    static const char* VENDOR_CONFIG_DIR;    // "/vendor/etc/perf/"
+    
+    struct ConfigFileInfo {
+        const char* filename;
+        bool isEncrypted;
+        std::string content;
+    };
+    
+public:
+    // 获取配置文件路径（支持优先级）
+    static std::string getConfigFilePath(const char* filename);
+    
+    // 读取并解密配置文件
+    static bool readAndDecryptConfig(const std::string& filepath, std::string& content);
+    
+    // 检测文件是否加密
+    static bool isFileEncrypted(const std::string& filepath);
+    
+    // 解密文件内容
+    static bool decryptFileContent(const std::string& encryptedContent, std::string& decryptedContent);
+};
+```
+
+#### 8.2.2 修改现有宏定义
+
+**修改位置**：PerfConfig.cpp 文件开头
+
+```cpp
+// 原来的固定路径定义 - 删除
+// #define PERF_CONFIG_STORE_XML (VENDOR_DIR"/perf/perfconfigstore.xml")
+
+// 新的动态路径获取
+#define PERF_CONFIG_STORE_XML ConfigFileManager::getConfigFilePath("perfconfigstore.xml").c_str()
+```
+
+**修改位置**：TargetConfig.cpp 文件开头
+
+```cpp
+// 原来的固定路径定义 - 删除  
+// #define TARGET_CONFIGS_XML (VENDOR_DIR"/perf/targetconfig.xml")
+
+// 新的动态路径获取
+#define TARGET_CONFIGS_XML ConfigFileManager::getConfigFilePath("targetconfig.xml").c_str()
+```
+
+#### 8.2.3 核心实现代码
+
+**插入位置**：PerfConfig.cpp
+
+```cpp
+// 静态成员定义
+const char* ConfigFileManager::DEBUG_CONFIG_DIR = "/data/perf/";
+const char* ConfigFileManager::VENDOR_CONFIG_DIR = "/vendor/etc/perf/";
+
+std::string ConfigFileManager::getConfigFilePath(const char* filename) {
+    std::string debugPath = std::string(DEBUG_CONFIG_DIR) + filename;
+    std::string vendorPath = std::string(VENDOR_CONFIG_DIR) + filename;
+    
+    // 优先检查debug目录
+    if (access(debugPath.c_str(), F_OK) == 0) {
+        QLOGL(LOG_TAG, QLOG_L1, "Using debug config: %s", debugPath.c_str());
+        return debugPath;
+    }
+    
+    // 回退到vendor目录
+    QLOGL(LOG_TAG, QLOG_L1, "Using vendor config: %s", vendorPath.c_str());
+    return vendorPath;
+}
+
+bool ConfigFileManager::isFileEncrypted(const std::string& filepath) {
+    FILE* file = fopen(filepath.c_str(), "rb");
+    if (!file) return false;
+    
+    // 读取文件头部Magic Number判断是否加密
+    char header[8];
+    size_t read = fread(header, 1, 8, file);
+    fclose(file);
+    
+    if (read >= 4) {
+        // 检查加密标识 (例如: "ENC\x01")
+        return (memcmp(header, "ENC\x01", 4) == 0);
+    }
+    return false;
+}
+
+bool ConfigFileManager::decryptFileContent(const std::string& encryptedContent, 
+                                          std::string& decryptedContent) {
+    // 实现你的解密算法
+    // 这里以简单的XOR解密为例
+    const char* key = "QualcommPerfHAL2024";
+    size_t keyLen = strlen(key);
+    
+    decryptedContent.clear();
+    decryptedContent.reserve(encryptedContent.length());
+    
+    for (size_t i = 4; i < encryptedContent.length(); ++i) { // 跳过4字节头部
+        char decrypted = encryptedContent[i] ^ key[(i-4) % keyLen];
+        decryptedContent.push_back(decrypted);
+    }
+    
+    return true;
+}
+
+bool ConfigFileManager::readAndDecryptConfig(const std::string& filepath, 
+                                           std::string& content) {
+    // 读取文件内容
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        QLOGE(LOG_TAG, "Failed to open config file: %s", filepath.c_str());
+        return false;
+    }
+    
+    std::string fileContent((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    file.close();
+    
+    // 检查是否加密
+    if (isFileEncrypted(filepath)) {
+        QLOGL(LOG_TAG, QLOG_L1, "Decrypting config file: %s", filepath.c_str());
+        return decryptFileContent(fileContent, content);
+    } else {
+        QLOGL(LOG_TAG, QLOG_L1, "Using plain config file: %s", filepath.c_str());
+        content = fileContent;
+        return true;
+    }
+}
+```
+
+#### 8.2.4 修改XML解析器集成
+
+**修改位置**：XmlParser.h 和 XmlParser.cpp
+
+需要为 AppsListXmlParser 类添加支持内存XML解析的方法：
+
+```cpp
+// XmlParser.h 新增方法声明
+class AppsListXmlParser {
+public:
+    // 现有方法...
+    
+    // 新增：从内存内容解析XML
+    bool ParseFromMemory(const std::string& xmlContent);
+    
+private:
+    // 现有成员...
+};
+
+// XmlParser.cpp 实现
+bool AppsListXmlParser::ParseFromMemory(const std::string& xmlContent) {
+    xmlDocPtr doc = xmlParseMemory(xmlContent.c_str(), xmlContent.length());
+    if (doc == NULL) {
+        QLOGE(LOG_TAG, "Failed to parse XML from memory");
+        return false;
+    }
+    
+    xmlNodePtr rootElement = xmlDocGetRootElement(doc);
+    if (rootElement == NULL) {
+        QLOGE(LOG_TAG, "Failed to get root element");
+        xmlFreeDoc(doc);
+        return false;
+    }
+    
+    // 复用现有的解析逻辑
+    if (mCb != NULL) {
+        ParseNode(rootElement->children);
+    }
+    
+    xmlFreeDoc(doc);
+    return true;
+}
+```
+
+#### 8.2.5 修改PerfConfigDataStore解析流程
+
+**修改位置**：PerfConfig.cpp 中的 ConfigStoreInit() 方法
+
+```cpp
+void PerfConfigDataStore::ConfigStoreInit() {
+    int8_t idnum;
+    AppsListXmlParser *xmlParser = new(std::nothrow) AppsListXmlParser();
+    if (NULL == xmlParser) {
+        return;
+    }
+    
+    // 解析配置文件 - 修改后
+    std::string configContent;
+    std::string configPath = ConfigFileManager::getConfigFilePath("perfconfigstore.xml");
+    if (ConfigFileManager::readAndDecryptConfig(configPath, configContent)) {
+        // 加载obfuscation库
+        void *handle = dlopen(OBFUSCATION_LIB_NAME, RTLD_LAZY);
+        if (NULL != handle) {
+            mFeature_knob_func = (feature_knob_func_ptr)dlsym(handle, "IsFeatureEnabled");
+        }
+        
+        const string xmlPerfConfigRoot(PERF_CONFIG_STORE_ROOT);
+        const string xmlPerfConfigChild(PERF_CONFIG_STORE_CHILD);
+
+        idnum = xmlParser->Register(xmlPerfConfigRoot, xmlPerfConfigChild, PerfConfigStoreCB, NULL);
+        xmlParser->ParseFromMemory(configContent);  // 使用内存解析
+        xmlParser->DeRegister(idnum);
+
+        if (NULL != handle) {
+            mFeature_knob_func = NULL;
+            dlclose(handle);
+        }
+    } else {
+        QLOGE(LOG_TAG, "Failed to read config file: %s", configPath.c_str());
+    }
+
+    delete xmlParser;
+    mPerfConfigInit = true;
+    return;
+}
+```
+
+#### 8.2.6 修改TargetConfig解析流程
+
+**修改位置**：TargetConfig.cpp 中的 InitTargetConfigXML() 方法
+
+```cpp
+void TargetConfig::InitTargetConfigXML() {
+    AppsListXmlParser *xmlParser = new(std::nothrow) AppsListXmlParser();
+    if (NULL == xmlParser) {
+        return;
+    }
+    
+    // 读取并解密配置文件
+    std::string configContent;
+    std::string configPath = ConfigFileManager::getConfigFilePath("targetconfig.xml");
+    if (!ConfigFileManager::readAndDecryptConfig(configPath, configContent)) {
+        QLOGE(LOG_TAG, "Failed to read target config file: %s", configPath.c_str());
+        delete xmlParser;
+        return;
+    }
+    
+    QLOGV(LOG_TAG, "InitTargetConfigXML start with file: %s", configPath.c_str());
+
+    const string xmlTargetConfigRoot(TARGET_CONFIGS_XML_ROOT);
+    uint8_t idnum, i;
+    char TargetConfigXMLtag[NODE_MAX] = "";
+    string xmlChildTargetConfig;
+
+    // 解析多个配置
+    for(i = 1; i <= MAX_CONFIGS_SUPPORTED_PER_PLATFORM; i++) {
+        snprintf(TargetConfigXMLtag, NODE_MAX, TARGET_CONFIGS_XML_CHILD_CONFIG, i);
+        xmlChildTargetConfig = TargetConfigXMLtag;
+        idnum = xmlParser->Register(xmlTargetConfigRoot, xmlChildTargetConfig, TargetConfigsCB, &i);
+        xmlParser->ParseFromMemory(configContent);  // 使用内存解析
+        xmlParser->DeRegister(idnum);
+    }
+    
+    delete xmlParser;
+    QLOGV(LOG_TAG, "InitTargetConfigXML end");
+    return;
+}
+```
+
+### 8.3 实现时序图
+
+```mermaid
+sequenceDiagram
+    participant Store as PerfDataStore
+    participant MGR as ConfigFileManager
+    participant FS as 文件系统
+    participant DECRYPT as 解密模块
+    participant Parser as XmlParser
+    
+    Note over Store: 配置加载开始
+    Store->>MGR: getConfigFilePath("perfconfigstore.xml")
+    MGR->>FS: access("/data/perf/perfconfigstore.xml")
+    FS-->>MGR: 存在/不存在
+    
+    alt /data/perf/存在
+        MGR-->>Store: "/data/perf/perfconfigstore.xml"
+    else vendor路径
+        MGR-->>Store: "/vendor/etc/perf/perfconfigstore.xml"
+    end
+    
+    Store->>MGR: readAndDecryptConfig(path)
+    MGR->>FS: 读取文件内容
+    FS-->>MGR: 文件二进制内容
+    
+    MGR->>MGR: isFileEncrypted()
+    alt 文件已加密
+        MGR->>DECRYPT: decryptFileContent()
+        DECRYPT-->>MGR: 解密后的XML内容
+    else 文件未加密
+        MGR->>MGR: 直接使用原内容
+    end
+    
+    MGR-->>Store: XML文本内容
+    Store->>Parser: ParseFromMemory(xmlContent)
+    Parser->>Parser: xmlParseMemory()
+    Parser-->>Store: 解析完成
+```
+
+
 
