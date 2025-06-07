@@ -1,10 +1,8 @@
-# PerfHAL 源码分析
-
-## 1. PerfHAL 组件部署结构
+# 1. PerfHAL 组件部署结构
 
 当前模块代码路径为`vendor/qcom/proprietary/perf-core/perf-hal`
 
-### 1.1 Binary 文件
+## 1.1 Binary 文件
 
 ```bash
 # AIDL HAL服务
@@ -19,7 +17,7 @@
 /vendor/lib64/libqti-perfd.so
 ```
 
-### 1.2 配置文件
+## 1.2 配置文件
 
 ```bash
 # 服务启动配置
@@ -35,9 +33,9 @@
 /vendor/etc/vintf/manifest/vendor.qti.hardware.perf2.xml
 ```
 
-### 1.3 启动时机分析
+## 1.3 启动时机分析
 
-#### AIDL服务启动
+### AIDL服务启动
 
 ```bash
 # vendor.qti.hardware.perf2-hal-service.rc
@@ -49,7 +47,7 @@ service vendor.qti.hardware.perf2-service /vendor/bin/hw/vendor.qti.hardware.per
     task_profiles ProcessCapacityHigh HighPerformance
 ```
 
-#### Socket服务启动
+### Socket服务启动
 
 ```bash
 # vendor.qti.hardware.perf-hal-service.rc  
@@ -60,7 +58,7 @@ service vendor.qti.hardware.perf-hal-service /vendor/bin/hw/vendor.qti.hardware.
     socket perfservice stream 0666 system system
 ```
 
-#### AIDL vs Socket服务区别
+### AIDL vs Socket服务区别
 
 ##### AIDL服务 (`service.cpp` + `Perf.cpp`)
 
@@ -81,7 +79,7 @@ service vendor.qti.hardware.perf-hal-service /vendor/bin/hw/vendor.qti.hardware.
 
   
 
-## 2.系统架构图 
+# 2. 系统架构图 
 
 ```mermaid
 graph TB
@@ -205,11 +203,11 @@ graph TB
 
 
 
-## 3. 调用链路分析
+# 3. 调用链路分析
 
-### 3.1 客户端调用入口
+## 3.1 客户端调用入口
 
-#### mp-ctl-client 调用链
+### mp-ctl-client 调用链
 
 ```cpp
 // mp-ctl-client/client.cpp
@@ -244,7 +242,7 @@ int perf_lock_acq(int handle, int duration, int list[], int numArgs) {
 }
 ```
 
-#### PerfService 调用链
+### PerfService 调用链
 
 ```java
 // Performance.java
@@ -276,9 +274,9 @@ static jint com_qualcomm_qti_performance_native_perf_lock_acq(JNIEnv *env, jobje
 }
 ```
 
-### 3.2 HAL服务接收处理
+## 3.2 HAL服务接收处理
 
-#### AIDL接口实现 (Perf.cpp)
+### AIDL接口实现 (Perf.cpp)
 
 ```cpp
 ScopedAStatus Perf::perfLockAcquire(int32_t in_pl_handle, int32_t in_duration, 
@@ -335,7 +333,7 @@ ScopedAStatus Perf::perfLockAcquire(int32_t in_pl_handle, int32_t in_duration,
 }
 ```
 
-#### Hint处理实现
+### Hint处理实现
 
 ```cpp
 ScopedAStatus Perf::perfHint(int32_t hint, const std::string& userDataStr, 
@@ -389,9 +387,9 @@ ScopedAStatus Perf::perfHint(int32_t hint, const std::string& userDataStr,
 }
 ```
 
-### 3.3 PerfGlueLayer 请求分发
+## 3.3 PerfGlueLayer 请求分发
 
-#### 请求类型判断与分发
+### 请求类型判断与分发
 
 ```cpp
 int32_t PerfGlueLayer::PerfGlueLayerSubmitRequest(mpctl_msg_t *msg) {
@@ -506,9 +504,9 @@ int32_t PerfGlueLayer::PerfGlueLayerSubmitRequest(mpctl_msg_t *msg) {
 }
 ```
 
-### 3.4 性能模块动态加载
+## 3.4 性能模块动态加载
 
-#### 模块加载机制
+### 模块加载机制
 
 ```cpp
 int32_t PerfGlueLayer::LoadPerfLib(const char *libname) {
@@ -621,9 +619,9 @@ int32_t PerfModule::LoadPerfLib(const char *libname) {
 }
 ```
 
-### 3.5 HAL初始化流程
+## 3.5 HAL初始化流程
 
-#### 服务初始化
+### 服务初始化
 
 ```cpp
 void Perf::Init() {
@@ -682,7 +680,7 @@ void Perf::Init() {
 }
 ```
 
-#### 目标配置初始化
+### 目标配置初始化
 
 ```cpp
 void TargetConfig::InitializeTargetConfig() {
@@ -716,11 +714,11 @@ void TargetConfig::InitializeTargetConfig() {
 }
 ```
 
-## 4. 参数解析与处理机制
+# 4. 参数解析与处理机制
 
-### 4.1 Boost参数格式
+## 4.1 Boost参数格式
 
-#### 标准格式
+### 标准格式
 
 ```cpp
 // boost参数格式: [resource_id, value, resource_id, value, ...]
@@ -733,7 +731,7 @@ int32_t boost_params[] = {
 };
 ```
 
-#### 参数验证
+### 参数验证
 
 ```cpp
 // Perf.cpp中的参数检查
@@ -744,9 +742,9 @@ if (size > MAX_ARGS_PER_REQUEST) {
 }
 ```
 
-### 4.2 Hint参数处理
+## 4.2 Hint参数处理
 
-#### Hint ID映射
+### Hint ID映射
 
 ```cpp
 // mp-ctl.h中定义的Hint类型
@@ -759,7 +757,7 @@ enum {
 };
 ```
 
-#### Hint处理逻辑
+### Hint处理逻辑
 
 ```cpp
 // PerfGlueLayer.cpp中的Hint分发
@@ -786,9 +784,9 @@ bool PerfModule::IsThisEventRegistered(int32_t event) {
 }
 ```
 
-### 4.3 配置参数解析
+## 4.3 配置参数解析
 
-#### XML配置解析
+### XML配置解析
 
 ```cpp
 // TargetConfig.cpp中的配置解析
@@ -850,9 +848,9 @@ void TargetConfig::TargetConfigsCB(xmlNodePtr node, void *index) {
 
 
 
-## 5. Socket服务实现
+# 5. Socket服务实现
 
-### 5.1 Socket服务架构
+## 5.1 Socket服务架构
 
 ```cpp
 // Perf_sock.cpp - Socket服务实现
@@ -907,7 +905,7 @@ public:
 };
 ```
 
-### 5.2 客户端连接处理
+## 5.2 客户端连接处理
 
 ```cpp
 // service_sock.cpp - 主服务循环
@@ -993,7 +991,7 @@ int32_t Perf::sendMsg(void *msg, int32_t type) {
 }
 ```
 
-### 5.3 API调用分发处理
+## 5.3 API调用分发处理
 
 ```cpp
 void Perf::callAPI(mpctl_msg_t &msg) {
@@ -1054,7 +1052,7 @@ void Perf::callAPI(mpctl_msg_t &msg) {
 }
 ```
 
-### 5.4 Socket版本API实现
+## 5.4 Socket版本API实现
 
 ```cpp
 // 性能锁获取
@@ -1145,11 +1143,11 @@ void Perf::perfSyncRequest(mpctl_msg_t &pMsg) {
 
 
 
-## 6. 配置文件解析
+# 6. 配置文件解析
 
-### 6.1 targetconfig.xml解析
+## 6.1 targetconfig.xml解析
 
-#### 6.1.1 TargetConfig解析回调函数
+### 6.1.1 TargetConfig解析回调函数
 
 ```cpp
 void TargetConfig::TargetConfigsCB(xmlNodePtr node, void *index) {
@@ -1241,7 +1239,7 @@ void TargetConfig::TargetConfigsCB(xmlNodePtr node, void *index) {
 }
 ```
 
-#### 6.1.2 辅助函数 - 类型安全转换
+### 6.1.2 辅助函数 - 类型安全转换
 
 ```cpp
 long int TargetConfig::ConvertNodeValueToInt(xmlNodePtr node, const char *tag, long int defaultvalue) {
@@ -1284,9 +1282,9 @@ uint32_t TargetConfig::ConvertToIntArray(char *str, int16_t intArray[], uint32_t
 }
 ```
 
-### 6.2 perfconfigstore.xml解析核心代码
+## 6.2 perfconfigstore.xml解析核心代码
 
-#### 6.2.1 PerfConfig解析回调函数
+### 6.2.1 PerfConfig解析回调函数
 
 ```cpp
 void PerfConfigDataStore::PerfConfigStoreCB(xmlNodePtr node, void *) {
@@ -1434,7 +1432,7 @@ void PerfConfigDataStore::PerfConfigStoreCB(xmlNodePtr node, void *) {
 }
 ```
 
-#### 6.2.2 分辨率类型转换
+### 6.2.2 分辨率类型转换
 
 ```cpp
 ValueMapResType PerfConfigDataStore::ConvertToEnumResolutionType(char *res) {
@@ -1471,9 +1469,9 @@ ValueMapResType PerfConfigDataStore::ConvertToEnumResolutionType(char *res) {
 
 
 
-### 6.3 XML示例解析结果
+## 6.3 XML示例解析结果
 
-#### 6.3.1 targetconfig.xml解析结果:
+### 6.3.1 targetconfig.xml解析结果:
 
 - **Target**: "volcano"
 - **NumClusters**: 3 (little/big/prime)
@@ -1484,7 +1482,7 @@ ValueMapResType PerfConfigDataStore::ConvertToEnumResolutionType(char *res) {
   - Cluster 1: 3个big核心
   - Cluster 2: 1个prime核心
 
-#### 6.3.2 perfconfigstore.xml解析结果:
+### 6.3.2 perfconfigstore.xml解析结果:
 
 - **通用配置**: vendor.debug.enable.lm = "true"
 - **目标特定**: ro.vendor.perf.ss = "true" (仅volcano目标)
@@ -1492,7 +1490,7 @@ ValueMapResType PerfConfigDataStore::ConvertToEnumResolutionType(char *res) {
 
 
 
-### 6.4 解析时序图
+## 6.4 解析时序图
 
 ```mermaid
 sequenceDiagram
@@ -1635,7 +1633,7 @@ Note over MAIN,SYS: 配置管理层初始化完成
 
 
 
-## 7. 完整调用时序图
+# 7. 完整调用时序图
 
 ```mermaid
 sequenceDiagram
@@ -1698,11 +1696,11 @@ sequenceDiagram
 
 
 
-## 8. PerfHAL加密云控方案
+# 8. PerfHAL加密云控方案
 
-### 8.1 整体方案设计
+## 8.1 整体方案设计
 
-#### 8.1.1 架构设计
+### 8.1.1 架构设计
 
 ```mermaid
 graph TB
@@ -1720,7 +1718,7 @@ graph TB
     J --> K[配置数据存储]
 ```
 
-#### 8.1.2 核心实现策略
+### 8.1.2 核心实现策略
 
 - **文件路径管理器**：统一管理配置文件路径选择
 - **加密检测与解密**：自动识别加密文件并解密
@@ -1728,7 +1726,7 @@ graph TB
 
 ## 8.2 详细实现方案
 
-#### 8.2.1 新增配置文件管理类
+### 8.2.1 新增配置文件管理类
 
 **插入位置**：PerfConfig.h 和 PerfConfig.cpp
 
@@ -1760,7 +1758,7 @@ public:
 };
 ```
 
-#### 8.2.2 修改现有宏定义
+### 8.2.2 修改现有宏定义
 
 **修改位置**：PerfConfig.cpp 文件开头
 
@@ -1782,7 +1780,7 @@ public:
 #define TARGET_CONFIGS_XML ConfigFileManager::getConfigFilePath("targetconfig.xml").c_str()
 ```
 
-#### 8.2.3 核心实现代码
+### 8.2.3 核心实现代码
 
 **插入位置**：PerfConfig.cpp
 
@@ -1865,7 +1863,7 @@ bool ConfigFileManager::readAndDecryptConfig(const std::string& filepath,
 }
 ```
 
-#### 8.2.4 修改XML解析器集成
+### 8.2.4 修改XML解析器集成
 
 **修改位置**：XmlParser.h 和 XmlParser.cpp
 
@@ -1909,7 +1907,7 @@ bool AppsListXmlParser::ParseFromMemory(const std::string& xmlContent) {
 }
 ```
 
-#### 8.2.5 修改PerfConfigDataStore解析流程
+### 8.2.5 修改PerfConfigDataStore解析流程
 
 **修改位置**：PerfConfig.cpp 中的 ConfigStoreInit() 方法
 
@@ -1952,7 +1950,7 @@ void PerfConfigDataStore::ConfigStoreInit() {
 }
 ```
 
-#### 8.2.6 修改TargetConfig解析流程
+### 8.2.6 修改TargetConfig解析流程
 
 **修改位置**：TargetConfig.cpp 中的 InitTargetConfigXML() 方法
 
@@ -1994,7 +1992,7 @@ void TargetConfig::InitTargetConfigXML() {
 }
 ```
 
-### 8.3 实现时序图
+## 8.3 实现时序图
 
 ```mermaid
 sequenceDiagram

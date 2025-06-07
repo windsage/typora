@@ -1,8 +1,6 @@
-# Perf-Core性能优化框架详解
+# 1. 什么是Perf-Core框架
 
-## 1. 什么是Perf-Core框架
-
-### 1.1 框架定位
+## 1.1 框架定位
 
 Perf-Core是Q平台专门为Android系统设计的**系统级性能优化框架**，它的核心目标是：
 
@@ -13,9 +11,9 @@ Perf-Core是Q平台专门为Android系统设计的**系统级性能优化框架*
 
 
 
-## 2. 整体架构
+# 2. 整体架构
 
-### 2.1 架构模型
+## 2.1 架构模型
 
 ```
 ┌─────────────────────────────────────────┐
@@ -31,7 +29,7 @@ Perf-Core是Q平台专门为Android系统设计的**系统级性能优化框架*
 └─────────────────────────────────────────┘
 ```
 
-### 2.2 核心设计理念
+## 2.2 核心设计理念
 
 系统采用了双路径架构：
 
@@ -53,16 +51,16 @@ Regular Apps → Framwork → Binder IPC → PerfService → HAL
 
 
 
-## 3. 核心组件详解
+# 3. 核心组件详解
 
-### 3.1 Framework层 (BoostFramework.java)
+## 3.1 Framework层 (BoostFramework.java)
 
-#### 3.1.1 组件定位与职责
+### 3.1.1 组件定位与职责
 
 - **文件位置**：`framework/base/core/java/android/util/BoostFramework.java`
 - **主要用户**：SystemUI、输入法、系统服务等Framework组件
 
-#### 3.1.2 系统代码展示
+### 3.1.2 系统代码展示
 
 ```java
 // BoostFramework.java - Framework层封装
@@ -100,7 +98,7 @@ Performance.java (com.qualcomm.qti包)
 Native层实现
 ```
 
-#### 3.1.3 Framework中使用方式
+### 3.1.3 Framework中使用方式
 
 ```java
 // 系统应用中的典型使用
@@ -139,15 +137,15 @@ public class SystemPerformanceManager {
 
 
 
-### 3.2 Java API层 (Performance.java)
+## 3.2 Java API层 (Performance.java)
 
-#### 3.2.1 组件职责
+### 3.2.1 组件职责
 
 - **权限适配**：自动识别应用权限，选择合适的执行路径
 - **接口封装**：为应用层提供统一的性能控制接口
 - **生命周期管理**：管理性能锁的创建、使用和释放
 
-#### 3.2.2 智能路径选择机制
+### 3.2.2 智能路径选择机制
 
 ```java
 public int perfLockAcquire(int duration, int... list) {
@@ -164,9 +162,9 @@ public int perfLockAcquire(int duration, int... list) {
 
 
 
-### 3.3 Native服务层
+## 3.3 Native服务层
 
-#### 3.3.1 PerfService - 集中式管理
+### 3.3.1 PerfService - 集中式管理
 
 **设计目标**：为普通应用提供安全、可控的性能优化服务
 
@@ -177,7 +175,7 @@ public int perfLockAcquire(int duration, int... list) {
 - **死亡监听**：自动清理异常退出进程的资源
 - **权限控制**：验证客户端的调用权限
 
-#### 3.3.2 mp-ctl-client - 直连组件
+### 3.3.2 mp-ctl-client - 直连组件
 
 **设计目标**：为系统应用提供最高性能的直接访问路径
 
@@ -190,34 +188,34 @@ public int perfLockAcquire(int duration, int... list) {
 
 
 
-### 3.4 组件协作
+## 3.4 组件协作
 
-#### 3.4.1 系统应用调用链
+### 3.4.1 系统应用调用链
 
 ```
 BoostFramework → Performance → JNI → mp-ctl-client → HAL
 优势：最短路径，最低延迟，最高性能
 ```
 
-#### 3.4.2 普通应用调用链
+### 3.4.2 普通应用调用链
 
 ```
 BoostFramework → Performance → Binder → PerfService → HAL
 优势：安全可控，统一管理，资源保护
 ```
 
-#### 3.4.3 配置文件角色
+### 3.4.3 配置文件角色
 
 - **perfconfigstore.xml**：控制组件功能的开启和关闭
 - **perfboostsconfig.xml**：定义具体的性能优化策略
 
 
 
-## 4. API分类与使用指南
+# 4. API分类与使用指南
 
-### 4.1 API完整列表对比
+## 4.1 API完整列表对比
 
-#### 4.1.1 Framework层API (BoostFramework.java)
+### 4.1.1 Framework层API (BoostFramework.java)
 
 | API方法                 | 功能         | 参数                                       | 返回值 | 适用场景            |
 | ----------------------- | ------------ | ------------------------------------------ | ------ | ------------------- |
@@ -228,7 +226,7 @@ BoostFramework → Performance → Binder → PerfService → HAL
 | `perfGetProp()`         | 获取配置属性 | prop_name, def_val                         | string | 读取性能配置        |
 | `perfUXEngine_events()` | UX引擎事件   | opcode, pid, pkg, lat                      | handle | UX相关优化          |
 
-#### 4.1.2 Java API层 (Performance.java)
+### 4.1.2 Java API层 (Performance.java)
 
 | API方法                 | 功能     | 与Framework区别        | 使用建议         |
 | ----------------------- | -------- | ---------------------- | ---------------- |
@@ -238,7 +236,7 @@ BoostFramework → Performance → Binder → PerfService → HAL
 | `perfGetFeedbackExtn()` | 扩展反馈 | 支持参数扩展           | 需要系统状态查询 |
 | `perfEvent()`           | 性能事件 | 支持自定义事件         | 事件驱动优化     |
 
-#### 4.1.3 Native API (client.h)
+### 4.1.3 Native API (client.h)
 
 | API类别     | 主要方法                                      | 特点                   | 性能 |
 | ----------- | --------------------------------------------- | ---------------------- | ---- |
@@ -247,9 +245,9 @@ BoostFramework → Performance → Binder → PerfService → HAL
 | **属性API** | `perf_get_prop`, `perf_sync_request`          | 配置查询和同步请求     | 中等 |
 | **扩展API** | `perf_hint_acq_rel`, `perf_hint_renew`        | 高级功能，复杂参数     | 高   |
 
-### 4.2 API选择决策树
+## 4.2 API选择决策树
 
-#### 4.2.1 应用层API选择
+### 4.2.1 应用层API选择
 
 ```mermaid
 flowchart TD
@@ -267,7 +265,7 @@ flowchart TD
     I -->|普通应用| K[服务化路径调用]
 ```
 
-#### 4.2.2 Native层API选择
+### 4.2.2 Native层API选择
 
 ```mermaid
 flowchart TD
@@ -289,7 +287,7 @@ flowchart TD
     K -->|复杂管理| N[perf_hint_acq_rel]
 ```
 
-#### 4.2.3 API调用时机建议
+### 4.2.3 API调用时机建议
 
 | 场景     | 推荐API               | 调用时机       | 持续时间       | 注意事项                 |
 | -------- | --------------------- | -------------- | -------------- | ------------------------ |
@@ -301,11 +299,11 @@ flowchart TD
 
 
 
-## 5. 关键流程分析
+# 5. 关键流程分析
 
-### 5.1 调用路径对比
+## 5.1 调用路径对比
 
-#### 5.1.1 系统应用直通路径
+### 5.1.1 系统应用直通路径
 
 ```mermaid
 sequenceDiagram
@@ -331,7 +329,7 @@ sequenceDiagram
 - **直接调用**：JNI层直接调用Native函数，无跨进程通信
 - **性能最优**：延迟最低，适合性能敏感的系统组件
 
-#### 5.1.2 普通应用服务化路径
+### 5.1.2 普通应用服务化路径
 
 ```mermaid
 sequenceDiagram
@@ -358,9 +356,9 @@ sequenceDiagram
 - **资源管理**：统一记录和管理所有性能锁
 - **死亡监听**：客户端异常退出时自动清理资源
 
-### 5.2 异步调用机制
+## 5.2 异步调用机制
 
-#### 5.2.1 异步任务流程
+### 5.2.1 异步任务流程
 
 ```mermaid
 flowchart TD
@@ -385,7 +383,7 @@ flowchart TD
 - **线程池复用**：后台线程统一管理，避免频繁创建销毁
 - **句柄映射**：异步句柄与真实句柄建立映射关系
 
-#### 5.2.2 句柄映射管理
+### 5.2.2 句柄映射管理
 
 | 阶段         | 异步句柄状态      | 真实句柄状态 | 操作结果         |
 | ------------ | ----------------- | ------------ | ---------------- |
@@ -394,9 +392,9 @@ flowchart TD
 | **完成**     | MAPPED            | 已获得       | 建立映射关系     |
 | **释放请求** | RELEASE_REQ_STATE | 待释放       | 标记为待释放     |
 
-### 5.3 资源管理流程
+## 5.3 资源管理流程
 
-#### 5.3.1 性能锁生命周期
+### 5.3.1 性能锁生命周期
 
 ```mermaid
 stateDiagram-v2
@@ -418,7 +416,7 @@ stateDiagram-v2
     申请失败 --> [*]
 ```
 
-#### 5.3.2 死亡监听机制
+### 5.3.2 死亡监听机制
 
 **监听注册流程**：
 
@@ -435,9 +433,9 @@ stateDiagram-v2
 4. 遍历`mHandleSet`，释放该PID的所有性能锁
 5. 清理`mBinderSet`中的记录
 
-### 5.4 HAL层适配流程
+## 5.4 HAL层适配流程
 
-#### 5.4.1 HAL类型检测
+### 5.4.1 HAL类型检测
 
 ```mermaid
 flowchart TD
@@ -459,7 +457,7 @@ flowchart TD
 - **版本检测**：根据Android API Level确定HAL版本
 - **动态切换**：运行时检测并选择合适的HAL类型
 
-#### 5.4.2 配置下发流程
+### 5.4.2 配置下发流程
 
 ```mermaid
 flowchart LR
@@ -482,18 +480,18 @@ flowchart LR
 
 
 
-## 6. 配置系统详解
+# 6. 配置系统详解
 
-### 6.1 配置文件概览
+## 6.1 配置文件概览
 
-#### 6.1.1 两套配置文件的职责分工
+### 6.1.1 两套配置文件的职责分工
 
 | 配置文件                 | 主要作用       | 配置内容                     | 修改场景                    |
 | ------------------------ | -------------- | ---------------------------- | --------------------------- |
 | **perfconfigstore.xml**  | **功能总开关** | 属性开关、参数阈值、调试标志 | 启用/禁用功能、调整功能参数 |
 | **perfboostsconfig.xml** | **性能策略库** | 硬件资源配置、性能参数组合   | 调整性能强度、新增场景支持  |
 
-#### 6.1.2 配置文件路径
+### 6.1.2 配置文件路径
 
 ```
 vendor/qcom/proprietary/perf-core/configs/{platform}/
@@ -502,11 +500,11 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 └── targetconfig.xml         # 平台相关配置
 ```
 
-### 6.2 perfconfigstore.xml 详解
+## 6.2 perfconfigstore.xml 详解
 
 路径vendor/qcom/proprietary/perf-core/configs/{$target}/perfboostsconfig.xml
 
-#### 6.2.1 配置结构与属性作用
+### 6.2.1 配置结构与属性作用
 
 **结构示例**
 
@@ -548,7 +546,7 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 </PerfConfigsStore>
 ```
 
-#### 6.2.2 核心功能属性
+### 6.2.2 核心功能属性
 
 | 属性字段     | 含义                       | 可选值                  | 示例                                       |
 | ------------ | -------------------------- | ----------------------- | ------------------------------------------ |
@@ -583,7 +581,7 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 | `vendor.prekill_MIN_ADJ_to_Kill`             | 预杀进程最小ADJ值                  | 数字       | 内存回收激进程度 |
 | `vendor.prekill_MAX_ADJ_to_Kill`             | 预杀进程最大ADJ值                  | 数字       | 内存回收范围     |
 
-#### 6.2.3 调试相关属性
+### 6.2.3 调试相关属性
 
 | 属性名                         | 调试作用             | 使用场景         |
 | ------------------------------ | -------------------- | ---------------- |
@@ -591,11 +589,11 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 | `vendor.debug.enable.memperfd` | 启用内存性能调试     | 内存优化问题分析 |
 | `vendor.debug.perf.game`       | 游戏性能调试开关     | 游戏性能问题定位 |
 
-### 6.3 perfboostsconfig.xml 详解
+## 6.3 perfboostsconfig.xml 详解
 
 路径vendor/qcom/proprietary/perf-core/configs/{$target}/perfboostsconfig.xml
 
-#### 6.3.1 配置结构与资源码含义
+### 6.3.1 配置结构与资源码含义
 
 `perfboostsconfig.xml`是Perf-Core框架的**核心配置文件**，它定义了各种性能提示（Hint）对应的具体硬件资源配置。这个文件直接对应BoostFramework.java中定义的各种Hint常量。
 
@@ -617,7 +615,7 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 </BoostConfigs>
 ```
 
-#### 6.3.2 Resources资源码详解
+### 6.3.2 Resources资源码详解
 
 | 资源操作码      | 硬件组件             | 参数含义          | 调整效果              |
 | --------------- | -------------------- | ----------------- | --------------------- |
@@ -639,7 +637,7 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 | `0x43458000`    | L3缓存频率           | 频率值            | 三级缓存工作频率      |
 | `0x4303C000`    | DDR带宽              | 带宽值            | 内存总线带宽          |
 
-#### 6.3.3 常用配置组合模式
+### 6.3.3 常用配置组合模式
 
 | 场景类型     | 典型Resources组合                      | 优化目标     |
 | ------------ | -------------------------------------- | ------------ |
@@ -648,7 +646,7 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 | **重度优化** | `0x40C00000,3 + 全频率拉满 + 内存带宽` | 极致性能表现 |
 | **游戏专用** | `调度+CPU+GPU+内存+缓存`               | 游戏流畅度   |
 
-#### 6.3.4 Type类型说明与使用场景
+### 6.3.4 Type类型说明与使用场景
 
 | Type值        | 使用场景     | 配置特点           | 何时选择             |
 | ------------- | ------------ | ------------------ | -------------------- |
@@ -659,9 +657,9 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 | **Type="6"**  | 游戏模式     | 针对游戏场景优化   | 游戏启动和运行       |
 | **Type="10"** | Activity启动 | 专门的Activity启动 | 界面切换和启动       |
 
-### 6.4 配置修改指南
+## 6.4 配置修改指南
 
-#### 6.4.1 perfconfigstore.xml 修改场景
+### 6.4.1 perfconfigstore.xml 修改场景
 
 **何时修改**：
 
@@ -688,7 +686,7 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
 <Prop Name="vendor.perf.game.max_fps" Value="60" Ram="4"/>
 ```
 
-#### 6.4.2 perfboostsconfig.xml 修改场景
+### 6.4.2 perfboostsconfig.xml 修改场景
 
 **何时修改**：
 
@@ -731,9 +729,9 @@ vendor/qcom/proprietary/perf-core/configs/{platform}/
                0x40800000, 1000000"/> <!-- 适中的CPU频率 -->
 ```
 
-### 6.5 配置验证与调试
+## 6.5 配置验证与调试
 
-#### 6.5.1 配置生效验证
+### 6.5.1 配置生效验证
 
 **验证perfconfigstore.xml**：
 
@@ -758,7 +756,7 @@ adb shell cat /sys/class/kgsl/kgsl-3d0/gpuclk
 adb shell cat /proc/sys/kernel/sched_boost
 ```
 
-#### 6.5.2 常见配置问题排查
+### 6.5.2 常见配置问题排查
 
 | 问题现象       | 可能原因                         | 排查方法                 |
 | -------------- | -------------------------------- | ------------------------ |
@@ -770,9 +768,9 @@ adb shell cat /proc/sys/kernel/sched_boost
 
 
 
-## 7. 实际应用场景
+# 7. 实际应用场景
 
-### 7.1 应用启动优化
+## 7.1 应用启动优化
 
 ```java
 public class LaunchOptimizer {
@@ -793,7 +791,7 @@ public class LaunchOptimizer {
 }
 ```
 
-### 7.2 游戏性能优化
+## 7.2 游戏性能优化
 
 ```java
 public class GamePerformanceManager {
@@ -815,7 +813,7 @@ public class GamePerformanceManager {
 }
 ```
 
-### 7.3 滑动优化
+## 7.3 滑动优化
 
 ```java
 public class ScrollOptimizer implements View.OnScrollListener {
@@ -839,7 +837,7 @@ public class ScrollOptimizer implements View.OnScrollListener {
 }
 ```
 
-### 7.4 游戏引擎Native集成
+## 7.4 游戏引擎Native集成
 
 ```cpp
 class GameEngine {
@@ -919,7 +917,7 @@ public:
 };
 ```
 
-### 7.5 tuning决策树
+## 7.5 tuning决策树
 
 
 ​    

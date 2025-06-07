@@ -1,6 +1,6 @@
-# mp-ctl模块源码分析
+# 1. 编译产物分析
 
-## 1. 编译产物分析
+当前模块在系统源码中的**位置**是`vendor/qcom/proprietary/perf-core/mp-ctl`
 
 根据源码结构和Android.bp配置，主要编译产物包括：
 
@@ -16,9 +16,9 @@ libqti-perf.so      # 性能接口库
 - `perfd`: 系统性能守护进程，负责处理性能锁请求
 - `libqti-perf.so`: 对外接口库，供应用层调用
 
-## 2. mp-ctl模块作用分析
+# 2. mp-ctl模块作用分析
 
-### 2.1 核心功能架构
+## 2.1 核心功能架构
 
 ```mermaid
 graph TB
@@ -45,7 +45,7 @@ graph TB
     end
 ```
 
-### 2.2 主要模块功能
+## 2.2 主要模块功能
 
 | 模块         | 主要功能                 | 关键类                           |
 | ------------ | ------------------------ | -------------------------------- |
@@ -55,7 +55,7 @@ graph TB
 | **设备适配** | 针对不同SOC的适配        | `Target`, `TargetConfig`         |
 | **扩展处理** | 处理特殊性能提示         | `HintExtHandler`                 |
 
-### 2.3 性能锁机制
+## 2.3 性能锁机制
 
 ```mermaid
 stateDiagram-v2
@@ -70,9 +70,9 @@ stateDiagram-v2
     Timeout --> Released
 ```
 
-## 3. PerfHAL到mp-ctl调用流程
+# 3. PerfHAL到mp-ctl调用流程
 
-### 3.1 整体调用架构
+## 3.1 整体调用架构
 
 
 
@@ -93,7 +93,7 @@ sequenceDiagram
     HAL-->>App: 返回结果
 ```
 
-### 3.2 请求处理详细流程
+## 3.2 请求处理详细流程
 
 ```mermaid
 flowchart TD
@@ -123,7 +123,7 @@ flowchart TD
     S --> T[后处理]
 ```
 
-### 3.3 核心数据流
+## 3.3 核心数据流
 
 ```mermaid
 graph LR
@@ -143,7 +143,7 @@ graph LR
     style K fill:#f3e5f5
 ```
 
-### 3.4 关键接口说明
+## 3.4 关键接口说明
 
 #### 主要入口函数
 
@@ -175,7 +175,7 @@ int32_t internal_perf_lock_acq_apply(int32_t handle, Request *req);
 int32_t internal_perf_lock_rel(int32_t handle);
 ```
 
-### 3.5 资源管理机制
+## 3.5 资源管理机制
 
 mp-ctl通过以下机制管理系统资源：
 
@@ -186,9 +186,9 @@ mp-ctl通过以下机制管理系统资源：
 
 
 
-## 4. 优先级机制的核心实现
+# 4. 优先级机制的核心实现
 
-### 4.1 优先级判断逻辑
+## 4.1 优先级判断逻辑
 
 在 `ResourceQueues.cpp` 中的 `AddAndApply` 方法是优先级处理的核心：
 
@@ -230,7 +230,7 @@ bool ResourceQueue::AddAndApply(Request *req) {
 }
 ```
 
-### 4.2 比较函数实现
+## 4.2 比较函数实现
 
 在 `OptsHandler.cpp` 中定义了多种比较策略：
 
@@ -256,7 +256,7 @@ int32_t OptsHandler::lower_is_better(uint32_t reqLevel, uint32_t curLevel) {
 }
 ```
 
-### 4.3 优先级队列管理
+## 4.3 优先级队列管理
 
 ```mermaid
 graph TD
@@ -277,7 +277,7 @@ graph TD
     J --> L[应用挂起的请求]
 ```
 
-## 5. 具体资源的优先级配置
+# 5. 具体资源的优先级配置
 
 在 `OptsHandler.cpp` 的 `InitializeOptsTable()` 中为不同资源配置比较函数：
 
@@ -298,9 +298,9 @@ void OptsHandler::InitializeOptsTable() {
 }
 ```
 
-## 6. 实际使用示例分析
+# 6. 实际使用示例分析
 
-### 6.1 CPU频率请求场景
+## 6.1 CPU频率请求场景
 
 ```cpp
 // 场景：多个应用同时请求CPU最小频率
@@ -326,7 +326,7 @@ int handle_c = perf_lock_acq(8000, 0, args_c, 2);  // 8秒
 5. 5秒后App A超时：App C生效
 6. 8秒后App C超时：恢复系统默认值
 
-### 6.2 队列状态变化
+## 6.2 队列状态变化
 
 ```mermaid
 timeline
@@ -357,9 +357,9 @@ timeline
        : 挂起队列: 空
 ```
 
-## 7. 用户使用注意事项
+# 7. 用户使用注意事项
 
-### 7.1 性能级别设计原则
+## 7.1 性能级别设计原则
 
 ```cpp
 // ✅ 正确：根据实际性能需求设置合理值
@@ -370,7 +370,7 @@ int heavy_boost[] = {MPCTLV3_MIN_FREQ_CLUSTER_BIG_CORE_0, 1800000};    // 重度
 int always_max[] = {MPCTLV3_MIN_FREQ_CLUSTER_BIG_CORE_0, 0xFFFFFFFF}; // 可能导致功耗问题
 ```
 
-### 7.2 优先级冲突处理策略
+## 7.2 优先级冲突处理策略
 
 **建议用户：**
 
@@ -401,7 +401,7 @@ int always_max[] = {MPCTLV3_MIN_FREQ_CLUSTER_BIG_CORE_0, 0xFFFFFFFF}; // 可能�
    }
    ```
 
-### 7.3 调试优先级问题
+## 7.3 调试优先级问题
 
 可以通过以下方式查看当前活跃的性能锁：
 
@@ -417,9 +417,9 @@ perfmodule_sync_request_ext(SYNC_CMD_DUMP_DEG_INFO, &debugInfo);
 
 
 
-## 8. Config解析
+# 8. Config解析
 
-### 8.1 系统初始化时的配置加载流程
+## 8.1 系统初始化时的配置加载流程
 
 ```mermaid
 sequenceDiagram
@@ -463,7 +463,7 @@ sequenceDiagram
     Store-->>Target: 映射配置加载完成
 ```
 
-### 8.2 目标设备特定配置加载流程
+## 8.2 目标设备特定配置加载流程
 
 ```mermaid
 sequenceDiagram
@@ -515,14 +515,14 @@ sequenceDiagram
     Store-->>Target: 设备特定配置加载完成
 ```
 
-### 8.3 两个加载流程的区别
+## 8.3 两个加载流程的区别
 
-#### 8.3.1 加载时机不同
+### 8.3.1 加载时机不同
 
 - **系统初始化**：`perfmodule_init()` → `Target::InitializeTarget()` → `PerfDataStore::Init()`
 - **目标设备特定**：`Target::TargetInit()` 完成后 → `PerfDataStore::TargetResourcesInit()`
 
-#### 8.3.2 **配置文件类型不同**
+### 8.3.2 配置文件类型不同
 
 - 系统初始化：加载通用配置
   - `perfmapping.xml` (参数映射)
@@ -534,7 +534,7 @@ sequenceDiagram
   - `perfboostsconfig.xml` (性能提升配置)
   - `powerhint.xml` (电源提示配置)
 
-### 8.4 XML配置文件解析详细流程
+## 8.4 XML配置文件解析详细流程
 
 ```mermaid
 sequenceDiagram
@@ -581,7 +581,7 @@ sequenceDiagram
     end
 ```
 
-### 8.5 运行时配置查询流程
+## 8.5 运行时配置查询流程
 
 ```mermaid
 sequenceDiagram
@@ -624,7 +624,7 @@ App->>App: 根据返回的配置数组设置系统参数
 
 ```
 
-### 8.6 配置数据结构构建流程
+## 8.6 配置数据结构构建流程
 
 ```mermaid
 sequenceDiagram
@@ -667,9 +667,9 @@ sequenceDiagram
 
 
 
-## 9. BoostConfigReader核心功能
+# 9. BoostConfigReader核心功能
 
-### 9.1 主要解析的配置文件
+## 9.1 主要解析的配置文件
 
 ```cpp
 // BoostConfigReader.cpp - 配置文件路径定义
@@ -680,7 +680,7 @@ sequenceDiagram
 #define TARGETRESOURCE_CONFIGS_XML (VENDOR_DIR"/perf/targetresourceconfigs.xml") // 目标设备资源配置
 ```
 
-### 9.2 配置数据存储结构
+## 9.2 配置数据存储结构
 
 ```mermaid
 graph TB
@@ -699,7 +699,7 @@ graph TB
     end
 ```
 
-### 9.3 关键配置解析逻辑
+## 9.3 关键配置解析逻辑
 
 #### 性能提升配置解析
 
@@ -736,7 +736,7 @@ void PerfDataStore::BoostParamsMappingsCB(xmlNodePtr node, void *) {
 }
 ```
 
-### 9.4 配置查询接口
+## 9.4 配置查询接口
 
 ```cpp
 // 获取性能提升配置
@@ -761,7 +761,7 @@ uint32_t PerfDataStore::GetBoostConfig(int32_t hintId, int32_t type,
 }
 ```
 
-### 9.5 实际使用流程
+## 9.5 实际使用流程
 
 ```mermaid
 sequenceDiagram
@@ -782,7 +782,7 @@ sequenceDiagram
     Target-->>App: 应用配置参数
 ```
 
-### 9.6 配置文件示例结构
+## 9.6 配置文件示例结构
 
 ```xml
 <!-- perfboostsconfig.xml 示例 -->
@@ -806,9 +806,9 @@ sequenceDiagram
 
 
 
-## 10. MP-CTL加密云控方案设计
+# 10. MP-CTL加密云控方案设计
 
-### 10.1 架构设计
+## 10.1 架构设计
 
 ```mermaid
 graph TB
@@ -834,7 +834,7 @@ graph TB
 
 ### 10.3 详细实现方案
 
-#### 10.3.1 新增配置文件管理类
+### 10.3.1 新增配置文件管理类
 
 **插入位置：** `BoostConfigReader.h` 和 `BoostConfigReader.cpp`
 
@@ -866,7 +866,7 @@ public:
 };
 ```
 
-#### 10.3.2 修改现有宏定义
+### 10.3.2 修改现有宏定义
 
 **修改位置：** `BoostConfigReader.cpp` 文件开头
 
@@ -882,7 +882,7 @@ public:
 #define TARGETRESOURCE_CONFIGS_XML ConfigFileManager::getConfigFilePath("targetresourceconfigs.xml").c_str()
 ```
 
-#### 10.3.3 核心实现代码
+### 10.3.3 核心实现代码
 
 **插入位置：** `BoostConfigReader.cpp`
 
@@ -965,7 +965,7 @@ bool ConfigFileManager::readAndDecryptConfig(const std::string& filepath,
 }
 ```
 
-#### 10.3.4 修改XML解析器集成
+### 10.3.4 修改XML解析器集成
 
 **修改位置：** `XmlParser.h` 和 `XmlParser.cpp`
 
@@ -999,7 +999,7 @@ bool AppsListXmlParser::ParseFromMemory(const std::string& xmlContent) {
 }
 ```
 
-#### 10.3.5 修改PerfDataStore解析流程
+### 10.3.5 修改PerfDataStore解析流程
 
 **修改位置：** `BoostConfigReader.cpp` 中的 `XmlParserInit()` 和 `TargetResourcesInit()` 方法
 
@@ -1043,7 +1043,7 @@ void PerfDataStore::TargetResourcesInit() {
 }
 ```
 
-### 10.4 实现时序图
+## 10.4 实现时序图
 
 ```mermaid
 sequenceDiagram
@@ -1082,9 +1082,9 @@ sequenceDiagram
     Parser-->>Store: 解析完成
 ```
 
-## 11. 自定义Hint ID事件
+# 11. 自定义Hint ID事件
 
-### 11.1 定义新的Hint ID
+## 11.1 定义新的Hint ID
 
 **位置：** `VendorIPerf.h`
 
@@ -1100,7 +1100,7 @@ public static final int VENDOR_HINT_DOWN_CONTROL = 0x00001093;
 
 
 
-### 11.2 添加XML配置文件条目
+## 11.2 添加XML配置文件条目
 
 **位置：** `perfboostsconfig.xml` 配置文件
 
@@ -1110,7 +1110,7 @@ public static final int VENDOR_HINT_DOWN_CONTROL = 0x00001093;
 </Config>
 ```
 
-### 11.3 注册Hint扩展处理器（如需特殊处理）
+## 11.3 注册Hint扩展处理器（如需特殊处理）
 
 **位置：** `TargetInit.cpp` 中的 `Target::InitializeTarget()`
 
@@ -1126,11 +1126,11 @@ void Target::InitializeTarget() {
 }
 ```
 
-### 11.4 实现Hint处理逻辑（如需特殊处理）
+## 11.4 实现Hint处理逻辑（如需特殊处理）
 
 **位置：** `HintExtHandler.h` 和 `HintExtHandler.cpp`
 
-#### 11.4.1 头文件声明
+### 11.4.1 头文件声明
 
 ```cpp
 // HintExtHandler.h
@@ -1142,7 +1142,7 @@ public:
 };
 ```
 
-#### 11.4.2 实现文件
+### 11.4.2 实现文件
 
 ```cpp
 // HintExtHandler.cpp
@@ -1190,9 +1190,9 @@ int32_t DownControlAction::DownControlHintExcluder(mpctl_msg_t *pMsg) {
 }
 ```
 
-## 12. 自定义新OpCode
+# 12. 自定义新OpCode
 
-### 12.1 定义OpCode
+## 12.1 定义OpCode
 
 要根据**Perflock opcode value解析**当前文档去了解如何构造自己的opcode，需要符合qcom的规范，也可以自行阅读80-NR256-2_REV_E_MPCTL_Feature.pdf Chapter3.3 & Chapter 3.4
 
@@ -1200,7 +1200,7 @@ int32_t DownControlAction::DownControlHintExcluder(mpctl_msg_t *pMsg) {
 
 
 
-### 12.2 注册OpCode
+## 12.2 注册OpCode
 
 **位置：** `OptsHandler.cpp` 中的 `InitializeOptsTable()`
 
@@ -1217,9 +1217,9 @@ void OptsHandler::InitializeOptsTable() {
 }
 ```
 
-## 6. 调试和验证
+# 13. 调试和验证
 
-### 6.1 日志验证
+## 13.1 日志验证
 
 **位置：** `PerfController.cpp` 中的 `perfmodule_submit_request()`
 
@@ -1228,7 +1228,7 @@ QLOGL(LOG_TAG, QLOG_L1, "Received hint_id=0x%" PRIx32 ", hint_type=%" PRId32,
       pMsg->hint_id, pMsg->hint_type);
 ```
 
-### 6.2 配置验证
+## 13.2 配置验证
 
 检查你的XML配置是否被正确加载：
 
@@ -1237,7 +1237,7 @@ QLOGL(LOG_TAG, QLOG_L1, "Received hint_id=0x%" PRIx32 ", hint_type=%" PRId32,
 adb shell dumpsys vendor.qti.hardware.perf@2.0::IPerf/default
 ```
 
-## 核心流程总结
+# 14. 核心流程总结
 
 ```mermaid
 graph TB
