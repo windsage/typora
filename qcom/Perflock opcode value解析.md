@@ -48,6 +48,63 @@ flowchart TB
 
 
 
+```mermaid
+
+flowchart TD
+    A["32位 MPCTL Opcode 结构"] --> B["高位（左侧）bit 31-30: 版本号"]
+    A --> C["bit 28-22: 主要类型（7位）"]
+    A --> D["bit 19-14: 次要类型（6位）"]
+    A --> E["bit 13: 值映射标志"]
+    A --> F["bit 11-8: 集群号（4位）"]
+    A --> G["bit 6-4: 核心号（3位）"]
+    A --> H["低位（右侧）bit 3-0: 保留位"]
+    
+    subgraph examples ["0x41010300 解析示例"]
+        I["0x41010300 完整解析<br/>二进制: 01000001000000010000001100000000"]
+        J["版本号(bit31-30): 01 = 1<br/>perfLock API v3"]
+        K["主要类型(bit28-22): 0000100 = 4<br/>CORE_HOTPLUG 核心热插拔"]
+        L["次要类型(bit19-14): 000001 = 1<br/>MAX_CORE_ONLINE 最大在线核心"]
+        M["值映射(bit13): 0<br/>直接使用数值"]
+        N["集群号(bit11-8): 0011 = 3<br/>自定义集群3"]
+        O["核心号(bit6-4): 000 = 0<br/>针对整个集群"]
+        P["保留位(bit3-0): 0000<br/>未使用"]
+        
+        style I fill:#e1f5fe
+        style J fill:#f3e5f5
+        style K fill:#e8f5e8
+        style L fill:#fff3e0
+        style M fill:#fce4ec
+        style N fill:#e0f2f1
+        style O fill:#f1f8e9
+        style P fill:#f5f5f5
+    end
+
+```
+
+
+
+```mermaid
+---
+title: MPCTL Opcode 0x41010300 详细位结构解析
+---
+packet-beta
+0-3: "0000 (保留)"
+4-6: "000 (核心0)"
+7: "0"
+8-11: "0011 (集群3)"
+12: "0"
+13: "0 (直接值)"
+14-19: "000001 (最大在线)"
+20-21: "00"
+22-28: "0000100 (热插拔)"
+29: "0"
+30-31: "01 (版本1)"
+```
+
+
+
+
+
 * 已知控制节点查找perflock opcode
 
 同样的,如果我们知道某个节点,想知道上层通过哪个opcode来控制的呢?可以先在resource config配置里面搜
